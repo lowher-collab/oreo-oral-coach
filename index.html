@@ -209,7 +209,49 @@ async function toWav(blob){
   dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,rate,true);
   dv.setUint32(28,rate*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true); w(36,"data"); dv.setUint32(40,out.length*2,true);
   for(let i = 0; i < out.length; i++){ const s = Math.max(-1, Math.min(1, out[i])); dv.setInt16(44 + i*2, s < 0 ? s*0x8000 : s*0x7FFF, true); }
-  return new Blob([dv], {type:"audio/wav"});
+  return {blob: new Blob([dv], {type:"audio/wav"}), metrics: measurePauses(out, rate)};
+}
+
+/* ---------- objective fluency measures from the recording ---------- */
+// Splits the audio into 20 ms frames, finds speech vs silence by loudness relative to the
+// recording's own background noise, then measures silent gaps between the first and last word.
+const LONG_PAUSE = 2.0; // seconds; a gap this long counts as a long pause
+function measurePauses(x, rate){
+  const fl = Math.round(rate * 0.02), n = Math.floor(x.length / fl);
+  if(n < 10) return {speakSec: 0, longPauses: 0, maxPause: 0, pauseSec: 0};
+  const rms = new Float32Array(n);
+  for(let f = 0; f < n; f++){ let s = 0; for(let i = f*fl; i < (f+1)*fl; i++) s += x[i]*x[i]; rms[f] = Math.sqrt(s / fl); }
+  const sorted = Array.from(rms).sort((a, b) => a - b);
+  const noise = sorted[Math.floor(n * 0.15)], loud = sorted[Math.floor(n * 0.95)];
+  const thr = Math.max(noise * 2.5, noise + (loud - noise) * 0.12, 0.004);
+  let speech = Array.from(rms, v => v > thr);
+  // smooth: ignore speech blips shorter than 60 ms
+  for(let f = 0; f < n; f++) if(speech[f]){ let e = f; while(e < n && speech[e]) e++; if(e - f < 3) for(let k = f; k < e; k++) speech[k] = false; f = e; }
+  const first = speech.indexOf(true), last = speech.lastIndexOf(true);
+  if(first < 0) return {speakSec: 0, longPauses: 0, maxPause: 0, pauseSec: 0};
+  let longPauses = 0, maxPause = 0, pauseSec = 0;
+  for(let f = first; f <= last; f++){
+    if(speech[f]) continue;
+    let e = f; while(e <= last && !speech[e]) e++;
+    const sec = (e - f) * 0.02;
+    if(sec >= 0.6) pauseSec += sec;
+    if(sec >= LONG_PAUSE) longPauses++;
+    maxPause = Math.max(maxPause, sec);
+    f = e;
+  }
+  const r1 = v => Math.round(v * 10) / 10;
+  return {speakSec: r1((last - first + 1) * 0.02), longPauses, maxPause: r1(maxPause), pauseSec: r1(pauseSec)};
+}
+
+// Fluency score out of 3, from measured pauses and speaking rate (P3 starter thresholds).
+function fluencyScore(m, words){
+  if(!m || !m.speakSec) return {score: 0, wpm: 0, note: "No clear speech was heard in the recording."};
+  const wpm = Math.round(words / (m.speakSec / 60));
+  let score = m.longPauses === 0 ? 3 : m.longPauses <= 2 ? 2 : m.longPauses <= 4 ? 1 : 0;
+  if(wpm < 50) score = Math.max(0, score - 1);
+  if(words < 12) score = Math.min(score, 1);
+  const parts = [`${m.longPauses} long pause${m.longPauses === 1 ? "" : "s"} (2 seconds or more)`, `longest pause ${m.maxPause}s`, `${wpm} words per minute`];
+  return {score, wpm, note: parts.join(" · ")};
 }
 
 /* ---------- speech out ---------- */
@@ -281,7 +323,7 @@ function renderUpload(msg){
       <li><b>1</b><span>Look at the picture for 1 minute.</span></li>
       <li><b>2</b><span>The examiner asks 3 questions out loud.</span></li>
       <li><b>3</b><span>Tap the microphone and answer by talking.</span></li>
-      <li><b>4</b><span>At the end, get an OREO check and a better answer for each question.</span></li>
+      <li><b>4</b><span>At the end, get a score out of 10 and a better answer for each question.</span></li>
     </ol>
     <div class="hint"><span><strong>The best answer is OREO, in 4 to 6 short sentences:</strong> <b>O</b>pinion, <b>R</b>eason, <b>E</b>xample from your life, <b>O</b>pinion again.</span></div>
   </section>`;
@@ -360,38 +402,49 @@ Each question: simple words, under 20 words, invites an opinion the child can su
 
 async function evalAnswer(item){
   return gemini([
-    {text:`You are a warm Singapore primary school English oral examiner coaching a Primary 3 pupil (about 9 years old).
+    {text:`You are an experienced Singapore primary school English teacher marking a Primary 3 pupil's (about 9 years old) Stimulus-Based Conversation answer. This is an entry-level school oral, not the PSLE: judge against what a typical P3 pupil can do.
 The picture shows: ${S.scene}
 The question was: "${item.q}" (if it has two parts, a good answer covers both)
 The attached audio is the child's spoken answer.
 
-The target is an OREO answer of 4 to 6 short sentences:
-- opinion: a clear view at the start
-- reason: why ("because ...")
-- example: a specific example, ideally from the child's own life
-- closing: the opinion stated again at the end
+MARKING SCHEME (the page adds a separate fluency score from measured pauses; you do NOT mark fluency or pronunciation):
+
+A. STRUCTURE (4 marks, 1 each). Give the mark only if the part is present AND relevant to this question AND specific enough to be meaningful:
+ - opinion: a clear view or answer near the start ("Yes, I would like to...", "I think..."). For a "Tell me about..." question, a clear opening statement of the experience or feeling counts.
+ - reason: a real reason linked to the opinion ("because ..."). A vague reason like "because it is fun" with nothing more earns the mark only if it is tied to the question; note it in "reasons".
+ - example: a specific example, ideally from the child's own life, with at least one concrete detail (who, where, when or what happened). A general statement ("I like parties") is not an example.
+ - closing: the opinion restated at the end.
+
+B. LANGUAGE (3 marks) — grammar and vocabulary only, P3 standard:
+ 3 = simple sentences mostly correct; uses linking words (because, when, and then, so); one or two good words beyond the basics
+ 2 = mostly complete sentences; a few grammar errors that do not affect meaning; simple but suitable words
+ 1 = many errors or half-sentences; meaning sometimes unclear; very limited words
+ 0 = mostly single words or no complete sentences
 
 Reply with only JSON:
-{"transcript": "exactly what the child said, cleaned only of long silences",
- "opinion": true/false, "reason": true/false, "example": true/false, "closing": true/false,
- "sentences": integer number of sentences spoken,
- "delivery": "one sentence, speaking to the child, about how they spoke: clarity, pace, volume, pauses or confidence",
- "praise": "one specific sentence about what the child did well, simple words, speaking to the child",
- "tip": "one short sentence, speaking to the child, aimed at the most important missing OREO part; if all four are present, aimed at richer words or more detail",
- "model": ["4 to 6 short sentences in strict OREO order, first person, Primary 3 vocabulary with 1-2 slightly richer words, reusing the child's own ideas and example where possible"],
+{"transcript": "what the child said, word for word, including repeated words and fillers like um/er",
+ "words": integer count of words in the transcript excluding fillers,
+ "structure": {"opinion": true/false, "reason": true/false, "example": true/false, "closing": true/false},
+ "reasons": "one or two short sentences for the parent explaining any structure mark not given, quoting the child's words",
+ "language": 0-3,
+ "language_reason": "one sentence for the parent explaining the language mark, quoting the child's words",
+ "pronunciation_note": "one short sentence about any clearly mispronounced words you heard, or empty string; this is not scored",
+ "praise": "one specific sentence to the child about what they did well, simple words",
+ "next_step": "ONE most important thing to improve next time, speaking to the child, with a sentence starter they can use",
+ "model": ["4 to 6 short sentences in strict order: opinion, reason, specific example, opinion again. First person, Primary 3 words with 1-2 slightly richer words, reusing the child's own ideas and example where possible"],
  "fixes": [up to 2 {"said": "...", "better": "..."} for real grammar or word-choice mistakes; [] if none]}
-If the audio is silent or unclear, say so in "transcript" and give a helpful tip.`},
+If the audio is silent or unclear, say so in "transcript", give 0 marks where nothing was said, and give a helpful next_step.`},
     {inlineData:{mimeType:"audio/wav", data: await toB64(item.audio)}}
   ]);
 }
 
 function genSummary(items){
-  const lines = items.map((it, i) => `Q${i+1}: ${it.q}\nAnswer: ${it.r.transcript}\nOREO: opinion ${it.r.opinion}, reason ${it.r.reason}, example ${it.r.example}, closing ${it.r.closing}; ${it.r.sentences} sentences; delivery: ${it.r.delivery}`).join("\n\n");
-  return gemini([{text:`You are an experienced Singapore primary school English teacher writing to a parent after their Primary 3 child's oral practice (stimulus-based conversation). Target structure: OREO (Opinion, Reason, Example, Opinion again) in 4-6 short sentences.
+  const lines = items.map((it, i) => `Q${i+1}: ${it.q}\nAnswer: ${it.r.transcript}\nScore ${it.r.total}/10 = structure ${it.r.structureScore}/4 + language ${it.r.language}/3 + fluency ${it.r.fluency}/3 (${it.r.fluencyNote})\nStructure notes: ${it.r.reasons}`).join("\n\n");
+  return gemini([{text:`You are an experienced Singapore primary school English teacher writing to a parent after their Primary 3 child's oral practice (stimulus-based conversation). Each answer was scored out of 10: structure 4 (opinion, reason, specific example, opinion again), language 3 (grammar and vocabulary), fluency 3 (measured pauses and speaking rate).
 
 ${lines}
 
-Reply with only JSON: {"summary": "3-4 plain sentences covering ideas and detail, sentence structure, vocabulary, and how the child spoke (fluency, confidence). Honest and specific; quote a short phrase where useful.", "next": ["1 or 2 concrete things to practise next"]}`}]);
+Reply with only JSON: {"summary": "3-4 plain sentences for the parent: what went well, the main weakness with evidence from the answers, and whether structure, language or fluency is holding the score back most. Honest and specific; quote a short phrase where useful.", "next": ["1 or 2 concrete practice activities for this week that target the main weakness"]}`}]);
 }
 
 /* ---------- step 3: questions ---------- */
@@ -468,7 +521,7 @@ function setupRecorder(){
       mic.classList.remove("on"); mic.innerHTML = MIC; mic.setAttribute("aria-label", "Start recording");
       clock.textContent = "Converting…";
       try{
-        S.curAudio = await toWav(new Blob(chunks, {type: rec.mimeType}));
+        const conv = await toWav(new Blob(chunks, {type: rec.mimeType})); S.curAudio = conv.blob; S.curMetrics = conv.metrics;
         S.curCaption = cap.textContent.trim();
         $("#play").innerHTML = `<audio controls src="${URL.createObjectURL(S.curAudio)}"></audio>`;
         clock.textContent = "Listen back, then send";
@@ -486,83 +539,107 @@ function setupRecorder(){
 
 function checkItem(item){
   item.err = null;
-  item.p = evalAnswer(item).then(r => { item.r = normal(r); }, e => { item.err = e; });
+  item.p = evalAnswer(item).then(r => { item.r = normal(r, item.metrics); }, e => { item.err = e; });
   return item.p;
 }
 function submit(){
   if(!S.curAudio) return;
   hush();
-  const item = {q: qText(S.questions[S.q]), audio: S.curAudio, caption: S.curCaption || "", r: null};
+  const item = {q: qText(S.questions[S.q]), audio: S.curAudio, metrics: S.curMetrics, caption: S.curCaption || "", r: null};
   S.curAudio = null; S.items.push(item);
   checkItem(item);
   if(S.q < S.questions.length - 1){ S.q++; renderAsk(); } else finish();
 }
 
-function normal(r){
+function normal(r, metrics){
+  const st = r.structure || r;
+  const structure = {opinion: !!st.opinion, reason: !!st.reason, example: !!st.example, closing: !!st.closing};
+  const structureScore = Object.values(structure).filter(Boolean).length;
+  const language = Math.max(0, Math.min(3, parseInt(r.language) || 0));
+  const transcript = String(r.transcript || "");
+  const words = parseInt(r.words) || transcript.replace(/\b(um+|uh+|er+|ah+)\b/gi, "").split(/\s+/).filter(Boolean).length;
+  const fl = fluencyScore(metrics, words);
   return {
-    transcript: String(r.transcript || ""), delivery: String(r.delivery || ""),
-    opinion: !!r.opinion, reason: !!r.reason, example: !!r.example, closing: !!r.closing,
-    sentences: Math.max(0, parseInt(r.sentences) || 0),
-    praise: String(r.praise || ""), tip: String(r.tip || ""),
+    transcript, words, structure, structureScore, language, fluency: fl.score, wpm: fl.wpm, fluencyNote: fl.note,
+    metrics: metrics || null, total: structureScore + language + fl.score,
+    reasons: String(r.reasons || ""), languageReason: String(r.language_reason || ""),
+    pronunciation: String(r.pronunciation_note || ""),
+    praise: String(r.praise || ""), nextStep: String(r.next_step || r.tip || ""),
     model: (Array.isArray(r.model) ? r.model : String(r.model || "").split(/(?<=[.!?])\s+/)).map(String).filter(Boolean).slice(0, 6),
     fixes: Array.isArray(r.fixes) ? r.fixes.slice(0, 2).map(f => ({said:String(f?.said||""), better:String(f?.better||"")})).filter(f => f.said && f.better) : []
   };
 }
 
 /* ---------- feedback pieces ---------- */
-function oreoRow(r){
-  const parts = [["O","Opinion",r.opinion],["R","Reason",r.reason],["E","Example",r.example],["O","Opinion again",r.closing]];
-  return `<div class="oreo">${parts.map(([l, n, ok]) => `<div class="layer ${ok ? "yes" : "no"}"><span class="l">${l}</span><span>${n}</span><span>${ok ? "Yes" : "Missing"}</span></div>`).join("")}</div>`;
+function oreoRow(st){
+  const parts = [["O","Opinion",st.opinion],["R","Reason",st.reason],["E","Example",st.example],["O","Opinion again",st.closing]];
+  return `<div class="oreo">${parts.map(([l, n, ok]) => `<div class="layer ${ok ? "yes" : "no"}"><span class="l">${l}</span><span>${n}</span><span>${ok ? "1 mark" : "0"}</span></div>`).join("")}</div>`;
 }
-function lengthMeter(n){
-  const pct = Math.min(n, 8) / 8 * 100, verdict = n < 4 ? "a bit short" : n > 6 ? "a bit long" : "just right";
-  return `<div class="meter"><span>Sentences: <strong>${n}</strong></span><div class="bar" aria-hidden="true"><div class="band"></div><div class="fill" style="width:${pct}%"></div></div><span class="muted small">target 4–6 · ${verdict}</span></div>`;
+function scoreBar(label, got, max){
+  return `<div class="meter"><span style="min-width:150px">${label}</span><div class="bar" aria-hidden="true"><div class="fill" style="width:${got / max * 100}%"></div></div><strong style="font-variant-numeric:tabular-nums">${got}/${max}</strong></div>`;
 }
 function feedbackHTML(it, i){
   const r = it.r;
+  if(r.structure === undefined) return `<article class="panel"><p class="eyebrow">Question ${i+1}</p><h3>${esc(it.q)}</h3><p class="muted">This answer was saved with an older version of the coach.</p></article>`;
   return `
   <article class="panel">
-    <p class="eyebrow">Question ${i+1}</p>
-    <h3 style="font-size:1.2rem">${esc(it.q)}</h3>
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div style="min-width:0;flex:1"><p class="eyebrow">Question ${i+1}</p><h3 style="font-size:1.2rem">${esc(it.q)}</h3></div>
+      <div class="stat" style="text-align:center"><div class="n">${r.total}<span class="small muted">/10</span></div></div>
+    </div>
     ${it.audio ? `<audio controls src="${URL.createObjectURL(it.audio)}"></audio>` : ""}
     <p class="muted" style="margin:0"><span class="eyebrow">You said</span><br>${esc(r.transcript)}</p>
-    ${oreoRow(r)}
-    ${lengthMeter(r.sentences)}
+    ${oreoRow(r.structure)}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${scoreBar("Structure", r.structureScore, 4)}
+      ${scoreBar("Language", r.language, 3)}
+      ${scoreBar("Fluency (measured)", r.fluency, 3)}
+    </div>
     <div class="fb">
       <div class="card"><h3>Well done</h3><p style="margin:4px 0 0">${esc(r.praise)}</p></div>
-      ${r.delivery ? `<div class="card"><h3>How you spoke</h3><p style="margin:4px 0 0">${esc(r.delivery)}</p></div>` : ""}
-      <div class="card"><h3>Try this next time</h3><p style="margin:4px 0 0">${esc(r.tip)}</p></div>
+      <div class="card"><h3>Try this next time</h3><p style="margin:4px 0 0">${esc(r.nextStep)}</p></div>
       ${r.fixes?.length ? `<div class="card"><h3>Small fixes</h3>${r.fixes.map(f => `<p class="fix" style="margin:4px 0 0"><s>${esc(f.said)}</s> → <ins>${esc(f.better)}</ins></p>`).join("")}</div>` : ""}
     </div>
     <div class="model">
       <div class="row" style="justify-content:space-between"><h3>Say it better</h3><button class="btn ghost" data-speak="${i}">Listen</button></div>
       <ol>${(r.model || []).map(s => `<li>${esc(s)}</li>`).join("")}</ol>
     </div>
+    <details class="qa"><summary>For parents: how this was marked</summary>
+      <div class="small" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <p style="margin:0"><strong>Structure ${r.structureScore}/4.</strong> ${esc(r.reasons || "All four parts were present, relevant and specific.")}</p>
+        <p style="margin:0"><strong>Language ${r.language}/3.</strong> ${esc(r.languageReason)}</p>
+        <p style="margin:0"><strong>Fluency ${r.fluency}/3</strong>, measured from the recording: ${esc(r.fluencyNote)}.</p>
+        ${r.pronunciation ? `<p style="margin:0"><strong>Pronunciation (not scored):</strong> ${esc(r.pronunciation)}</p>` : ""}
+      </div>
+    </details>
   </article>`;
 }
 const wireSpeak = (root, items) => root.querySelectorAll("[data-speak]").forEach(b => b.onclick = () => speak((items[+b.dataset.speak].r.model || []).join(" ")));
 
 function statsOf(items){
-  const n = items.length || 1, c = k => items.filter(i => i.r[k]).length;
-  return {n: items.length, opinion: c("opinion"), reason: c("reason"), example: c("example"), closing: c("closing"),
-    full: items.filter(i => i.r.opinion && i.r.reason && i.r.example && i.r.closing).length,
-    avgSentences: Math.round(items.reduce((a, i) => a + i.r.sentences, 0) / n * 10) / 10};
+  const n = items.length || 1, avg = k => Math.round(items.reduce((a, i) => a + (i.r[k] || 0), 0) / n * 10) / 10;
+  const c = k => items.filter(i => i.r.structure?.[k]).length;
+  return {n: items.length, score: avg("total"), structure: avg("structureScore"), language: avg("language"), fluency: avg("fluency"),
+    opinion: c("opinion"), reason: c("reason"), example: c("example"), closing: c("closing")};
 }
 function weakest(st){
-  const parts = [["example","Example"],["reason","Reason"],["opinion","Opinion"],["closing","Opinion again"]];
-  return parts.reduce((w, p) => st[p[0]] < st[w[0]] ? p : w)[1];
+  if(st.score === undefined) return "—";
+  const parts = [["Structure", st.structure / 4], ["Language", st.language / 3], ["Fluency", st.fluency / 3]];
+  return parts.reduce((w, p) => p[1] < w[1] ? p : w)[0];
 }
 function summaryHTML(d){
   const st = d.stats;
+  if(st.score === undefined) return `<p class="muted">Saved with an older version of the coach.</p>`;
   return `
     <div class="stats">
-      <div class="stat"><div class="n">${st.full}/${st.n}</div><div class="small muted">full OREO answers</div></div>
-      <div class="stat"><div class="n">${st.avgSentences}</div><div class="small muted">sentences per answer (target 4–6)</div></div>
-      <div class="stat"><div class="n">${st.example}/${st.n}</div><div class="small muted">answers with an example</div></div>
-      <div class="stat"><div class="n">${esc(weakest(st))}</div><div class="small muted">part to practise most</div></div>
+      <div class="stat"><div class="n">${st.score}<span class="small muted">/10</span></div><div class="small muted">average score (estimate, not an official mark)</div></div>
+      <div class="stat"><div class="n">${st.structure}<span class="small muted">/4</span></div><div class="small muted">structure</div></div>
+      <div class="stat"><div class="n">${st.language}<span class="small muted">/3</span></div><div class="small muted">language</div></div>
+      <div class="stat"><div class="n">${st.fluency}<span class="small muted">/3</span></div><div class="small muted">fluency (measured)</div></div>
     </div>
+    <div class="mini"><span>Most room to grow: ${esc(weakest(st))}</span><span>Opinion ${st.opinion}/${st.n}</span><span>Reason ${st.reason}/${st.n}</span><span>Example ${st.example}/${st.n}</span><span>Opinion again ${st.closing}/${st.n}</span></div>
     ${d.summary ? `<div><h3>For parents</h3><p style="margin:6px 0 0;max-width:65ch">${esc(d.summary)}</p></div>` : ""}
-    ${d.next?.length ? `<div><h3>Practise next</h3><ul style="margin:6px 0 0;padding-left:1.2em">${d.next.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}`;
+    ${d.next?.length ? `<div><h3>Practise this week</h3><ul style="margin:6px 0 0;padding-left:1.2em">${d.next.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}`;
 }
 
 /* ---------- step 4: results + save ---------- */
@@ -621,18 +698,18 @@ function renderSummary(d, saved){
 /* ---------- history ---------- */
 let sessions = [];
 function trendSVG(list){
-  const pts = list.slice().reverse().slice(-12);
+  const pts = list.filter(s => s.stats?.score !== undefined).slice().reverse().slice(-12);
   if(pts.length < 2) return "";
-  const W = 560, Hh = 150, l = 34, r = 12, t = 14, b = 26, iw = W - l - r, ih = Hh - t - b;
-  const x = i => l + i * iw / (pts.length - 1), y = v => t + ih - Math.min(v, 8) / 8 * ih;
-  const line = pts.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(s.stats.avgSentences).toFixed(1)}`).join("");
-  const bars = pts.map((s, i) => { const h = s.stats.n ? s.stats.full / s.stats.n * ih : 0; return `<rect x="${(x(i)-7).toFixed(1)}" y="${(t+ih-h).toFixed(1)}" width="14" height="${h.toFixed(1)}" rx="3" fill="var(--hl)"/>`; }).join("");
-  const grid = [0,2,4,6,8].map(v => `<line x1="${l}" x2="${W-r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${l-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`).join("");
-  const band = `<rect x="${l}" y="${y(6)}" width="${iw}" height="${y(4)-y(6)}" fill="var(--good-bg)"/>`;
+  const W = 560, Hh = 160, l = 34, r = 12, t = 14, b = 26, iw = W - l - r, ih = Hh - t - b;
+  const x = i => l + i * iw / (pts.length - 1), y = v => t + ih - Math.min(v, 10) / 10 * ih;
+  const series = [["score", 1, "var(--accent)", 2.5], ["structure", 10/4, "var(--cocoa)", 1.5], ["language", 10/3, "var(--good)", 1.5], ["fluency", 10/3, "var(--miss)", 1.5]];
+  const lines = series.map(([k, f, c, w]) => `<path d="${pts.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(s.stats[k] * f).toFixed(1)}`).join("")}" fill="none" stroke="${c}" stroke-width="${w}"${k === "score" ? "" : ' stroke-dasharray="4 3"'}/>`).join("");
+  const grid = [0,2,4,6,8,10].map(v => `<line x1="${l}" x2="${W-r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${l-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`).join("");
   const labels = pts.map((s, i) => `<text x="${x(i)}" y="${Hh-8}" text-anchor="middle">${new Date(s.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short"})}</text>`).join("");
-  const dots = pts.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.stats.avgSentences)}" r="${i === pts.length-1 ? 5 : 3.5}" fill="var(--accent)"/>`).join("");
-  return `<div style="overflow-x:auto"><svg class="trend" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Progress over recent sessions">${band}${grid}${bars}<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>${dots}${labels}</svg></div>
-  <div class="row small muted"><span>● Sentences per answer</span><span style="color:var(--ink)"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--hl)"></span> Share of full OREO answers</span><span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--good-bg)"></span> 4–6 sentence target</span></div>`;
+  const dots = pts.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.stats.score)}" r="${i === pts.length-1 ? 5 : 3.5}" fill="var(--accent)"/>`).join("");
+  const key = (c, t, dash) => `<span><svg width="18" height="10" aria-hidden="true"><line x1="0" x2="18" y1="5" y2="5" stroke="${c}" stroke-width="2"${dash ? ' stroke-dasharray="4 3"' : ""}/></svg> ${t}</span>`;
+  return `<div style="overflow-x:auto"><svg class="trend" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Scores over recent sessions">${grid}${lines}${dots}${labels}</svg></div>
+  <div class="row small muted">${key("var(--accent)", "Score /10")}${key("var(--cocoa)", "Structure", 1)}${key("var(--good)", "Language", 1)}${key("var(--miss)", "Fluency", 1)}<span>(parts scaled to 10)</span></div>`;
 }
 
 async function renderHistory(){
@@ -649,7 +726,7 @@ async function renderHistory(){
       ${s.thumb ? `<img src="${esc(s.thumb)}" alt="">` : `<div style="width:88px;height:66px;border-radius:8px;background:var(--sunk)"></div>`}
       <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
         <strong>${new Date(s.createdAt).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</strong>
-        <div class="mini"><span>Full OREO ${st.full}/${st.n}</span><span>${st.avgSentences} sentences avg</span>${["opinion","reason","example","closing"].map((k, i) => `<span class="${st[k] < st.n ? "w" : ""}">${["Opinion","Reason","Example","Opinion again"][i]} ${st[k]}/${st.n}</span>`).join("")}</div>
+        <div class="mini">${st.score === undefined ? "<span>Older format</span>" : `<span>Score ${st.score}/10</span><span>Structure ${st.structure}/4</span><span>Language ${st.language}/3</span><span>Fluency ${st.fluency}/3</span>`}</div>
       </div>
       <div class="act row"><button class="btn ghost" data-open="${esc(s.id)}">Open</button></div>
     </article>`; }).join("")}</section>`;
