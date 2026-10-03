@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OREO Oral Coach</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Lexend:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: one calm column, the examiner's card on top, the child's answer pad below; OREO shown as four stacked cookie layers. */
+:root{
+  --bg:#EEF2EF; --surface:#FFFFFF; --sunk:#E3E9E5; --ink:#1C2427; --muted:#5A676A; --line:#CFD8D3;
+  --accent:#1E6B73; --accent-ink:#FFFFFF; --cocoa:#45302A; --cream:#F6EBD9;
+  --good:#2C8656; --good-bg:#E1F2E7; --miss:#B9502F; --miss-bg:#F8E4DC; --hl:#F3D46B;
+  --display:"Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --body:"Lexend", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141A1B; --surface:#1D2527; --sunk:#252F31; --ink:#E7EEEC; --muted:#9AA9AB; --line:#33403F;
+  --accent:#5DB4BC; --accent-ink:#0E1A1C; --cocoa:#E9D6C4; --cream:#3A2C27;
+  --good:#6CCB94; --good-bg:#1F3A2B; --miss:#F09A7A; --miss-bg:#43281F; --hl:#C9A93E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141A1B; --surface:#1D2527; --sunk:#252F31; --ink:#E7EEEC; --muted:#9AA9AB; --line:#33403F;
+  --accent:#5DB4BC; --accent-ink:#0E1A1C; --cocoa:#E9D6C4; --cream:#3A2C27;
+  --good:#6CCB94; --good-bg:#1F3A2B; --miss:#F09A7A; --miss-bg:#43281F; --hl:#C9A93E; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
+.cookie{width:40px;height:40px;flex:none}
+h1{font-family:var(--display);font-weight:800;font-size:1.9rem;line-height:1;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.85rem;margin:2px 0 0}
+.tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px}
+.tab{border:0;background:transparent;color:var(--muted);font:500 .9rem var(--body);padding:8px 16px;border-radius:999px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+h2{font-family:var(--display);font-weight:700;font-size:1.45rem;line-height:1.15;margin:0;text-wrap:balance}
+h3{font-family:var(--display);font-weight:700;font-size:1.1rem;margin:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:16px}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+.eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button{font-family:var(--body)}
+.btn{border:0;border-radius:12px;padding:12px 20px;font-weight:600;font-size:1rem;cursor:pointer;background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;gap:8px}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn.big{font-size:1.15rem;padding:14px 26px;border-radius:14px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,.tab:focus-visible,textarea:focus-visible,.drop:focus-within{outline:3px solid var(--hl);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:28px 18px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;cursor:pointer;background:var(--bg)}
+.drop.over{border-color:var(--accent)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.steps li{background:var(--bg);border-radius:12px;padding:12px 14px;font-size:.88rem;display:flex;gap:10px}
+.steps b{font-family:var(--display);font-size:1.2rem;color:var(--accent);line-height:1}
+.pic{width:100%;max-height:420px;object-fit:contain;border-radius:14px;background:var(--sunk)}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;align-items:start}
+@media (max-width:720px){.stage{grid-template-columns:1fr}}
+.timer{display:flex;align-items:center;gap:16px}
+.ring{width:96px;height:96px;flex:none}
+.ring text{font-family:var(--display);font-weight:800;font-size:26px;fill:var(--ink)}
+.bubble{background:var(--cream);color:var(--cocoa);border-radius:4px 18px 18px 18px;padding:14px 18px;font-size:1.15rem;font-weight:500;line-height:1.45}
+.bubble.nudge{border:2px solid var(--hl)}
+.qcount{display:flex;gap:6px}
+.qcount span{width:26px;height:6px;border-radius:3px;background:var(--line)}
+.qcount span.on{background:var(--accent)}
+textarea{width:100%;min-height:150px;resize:vertical;border:1.5px solid var(--line);border-radius:14px;padding:14px;font:400 1.15rem/1.5 var(--body);color:var(--ink);background:var(--bg)}
+.hint{display:flex;gap:10px;align-items:flex-start;background:var(--sunk);border-radius:12px;padding:10px 12px;font-size:.85rem}
+kbd{font-family:var(--body);font-size:.8rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--surface)}
+.oreo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.layer{border-radius:12px;padding:10px 8px;text-align:center;font-size:.8rem;font-weight:600;display:flex;flex-direction:column;gap:2px;align-items:center}
+.layer .l{font-family:var(--display);font-size:1.6rem;font-weight:800;line-height:1}
+.layer.yes{background:var(--good-bg);color:var(--good)}
+.layer.no{background:var(--miss-bg);color:var(--miss)}
+.meter{display:flex;align-items:center;gap:10px;font-size:.9rem}
+.meter .bar{flex:1;height:10px;border-radius:5px;background:var(--sunk);position:relative;overflow:hidden;max-width:260px}
+.meter .fill{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:5px}
+.meter .band{position:absolute;top:0;bottom:0;left:calc(4/8*100%);width:calc(2/8*100%);background:var(--hl);opacity:.35}
+.fb{display:grid;gap:12px}
+.fb .card{border-radius:12px;padding:12px 14px;background:var(--bg)}
+.model{background:var(--cream);color:var(--cocoa);border-radius:14px;padding:16px 18px;font-size:1.08rem;display:flex;flex-direction:column;gap:6px}
+.model ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
+.fix{font-size:.92rem}
+.fix s{color:var(--miss)}
+.fix ins{text-decoration:none;color:var(--good);font-weight:600}
+.status{display:flex;align-items:center;gap:10px;color:var(--muted)}
+.dots{display:inline-flex;gap:4px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:b 1s infinite ease-in-out}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.7}}
+.err{background:var(--miss-bg);color:var(--miss);border-radius:12px;padding:10px 14px;font-size:.9rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--bg);border-radius:12px;padding:12px 14px}
+.stat .n{font-family:var(--display);font-weight:800;font-size:1.6rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.hist{display:flex;flex-direction:column;gap:12px}
+.hrow{display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px}
+.hrow img{width:88px;height:66px;object-fit:cover;border-radius:8px;background:var(--sunk)}
+.mini{display:flex;gap:6px;flex-wrap:wrap;font-size:.78rem;font-variant-numeric:tabular-nums}
+.mini span{background:var(--bg);border-radius:6px;padding:2px 7px}
+.mini span.w{background:var(--miss-bg);color:var(--miss)}
+@media (max-width:520px){.hrow{grid-template-columns:64px minmax(0,1fr)}.hrow img{width:64px;height:52px}.hrow .act{grid-column:1/-1}}
+details.qa{border-top:1px solid var(--line);padding-top:10px}
+details.qa summary{cursor:pointer;font-weight:500}
+.trend{width:100%;height:auto;display:block}
+.trend text{font-family:var(--body);font-size:11px;fill:var(--muted)}
+</style>
+</head>
+<body>
+<style>
+.rec{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0}
+.mic{width:96px;height:96px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 14px rgb(0 0 0 / .15)}
+.mic svg{width:40px;height:40px}
+.mic.on{background:var(--miss);animation:pulse 1.4s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgb(185 80 47 / .5)}70%{box-shadow:0 0 0 18px rgb(185 80 47 / 0)}100%{box-shadow:0 0 0 0 rgb(185 80 47 / 0)}}
+@media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
+.mic:focus-visible{outline:3px solid var(--hl);outline-offset:3px}
+.clock{font-family:var(--display);font-weight:700;font-size:1.3rem;font-variant-numeric:tabular-nums}
+.caption{width:100%;min-height:90px;background:var(--bg);border:1.5px dashed var(--line);border-radius:14px;padding:12px 14px;font-size:1.1rem;color:var(--ink)}
+.caption:empty::before{content:attr(data-empty);color:var(--muted)}
+audio{width:100%;max-width:420px}
+.gate{max-width:420px;margin:40px auto}
+input[type=password]{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font:400 1.1rem var(--body);background:var(--bg);color:var(--ink)}
+.drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.drop img{max-height:140px;border-radius:10px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg class="cookie" viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="11" rx="16" ry="6" fill="var(--cocoa)"/><rect x="4" y="15" width="32" height="8" rx="3" fill="var(--cream)" stroke="var(--cocoa)" stroke-width="1.5"/><ellipse cx="20" cy="28" rx="16" ry="6" fill="var(--cocoa)"/></svg>
+      <div><h1>OREO Oral Coach</h1><p class="sub">Primary 3 stimulus-based conversation practice</p></div>
+    </div>
+    <div class="tabs" role="tablist" id="tabs">
+      <button class="tab" role="tab" id="tab-practise" aria-selected="true">Practise</button>
+      <button class="tab" role="tab" id="tab-history" aria-selected="false">Past sessions</button>
+    </div>
+  </header>
+  <main id="view-practise"></main>
+  <main id="view-history" hidden></main>
+</div>
+
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const P = $("#view-practise"), H = $("#view-history");
+const NQ = 3;
+let S = {};
+
+/* ---------- passcode + server calls ---------- */
+const getPass = () => { try{ return localStorage.getItem("oreo-pass") || ""; }catch(e){ return S.pass || ""; } };
+const setPass = v => { S.pass = v; try{ v ? localStorage.setItem("oreo-pass", v) : localStorage.removeItem("oreo-pass"); }catch(e){} };
+
+async function gemini(parts){
+  const r = await fetch("/api/gemini", {method:"POST", headers:{"Content-Type":"application/json","x-passcode":getPass() || S.pass || ""}, body: JSON.stringify({parts})});
+  const d = await r.json().catch(() => ({}));
+  if(r.status === 401){ setPass(""); throw {code:"wrong_passcode", message:"Wrong passcode."}; }
+  if(!r.ok) throw {code: d.error || "server_error", message: d.message || "The examiner could not answer."};
+  return parseJSON(d.text);
+}
+function parseJSON(t){
+  try{ return JSON.parse(t); }catch(e){}
+  const m = String(t).match(/[\[{][\s\S]*[\]}]/);
+  if(m){ try{ return JSON.parse(m[0]); }catch(e){} }
+  throw {code:"bad_answer", message:"The examiner's reply could not be read."};
+}
+function errMsg(e){
+  if(e?.code === "wrong_passcode") return "The passcode was wrong. Reload the page and enter it again.";
+  if(e?.code === "missing_key") return "The Gemini key is not set up yet in Vercel (GEMINI_API_KEY).";
+  if(e?.code === "missing_passcode") return "The family passcode is not set up yet in Vercel (APP_PASSCODE).";
+  if(e?.code === "gemini_error") return "Gemini refused the request: " + (e.message || "");
+  return e?.message || "Something went wrong. Please try again.";
+}
+const errBox = e => `<div class="err">${esc(errMsg(e))} <span class="small">(${esc(e?.code || "error")})</span></div>`;
+
+const toB64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+
+function prepImage(file, maxSide = 1600, q = .85){
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => res(b || file), "image/jpeg", q);
+    };
+    img.onerror = () => res(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+const thumbOf = file => prepImage(file, 240, .7).then(b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); })).catch(() => "");
+
+/* ---------- audio: record → 16 kHz mono WAV ---------- */
+async function toWav(blob){
+  const buf = await blob.arrayBuffer();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ac.decodeAudioData(buf); ac.close();
+  const rate = 16000, len = Math.ceil(decoded.duration * rate);
+  const off = new OfflineAudioContext(1, Math.max(len, 1), rate);
+  const src = off.createBufferSource(); src.buffer = decoded; src.connect(off.destination); src.start();
+  const out = (await off.startRendering()).getChannelData(0);
+  const dv = new DataView(new ArrayBuffer(44 + out.length * 2));
+  const w = (o, s) => [...s].forEach((ch, i) => dv.setUint8(o + i, ch.charCodeAt(0)));
+  w(0,"RIFF"); dv.setUint32(4, 36 + out.length*2, true); w(8,"WAVE"); w(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,rate,true);
+  dv.setUint32(28,rate*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true); w(36,"data"); dv.setUint32(40,out.length*2,true);
+  for(let i = 0; i < out.length; i++){ const s = Math.max(-1, Math.min(1, out[i])); dv.setInt16(44 + i*2, s < 0 ? s*0x8000 : s*0x7FFF, true); }
+  return new Blob([dv], {type:"audio/wav"});
+}
+
+/* ---------- speech out ---------- */
+function speak(text){
+  try{
+    const s = window.speechSynthesis; if(!s) return; s.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = s.getVoices().find(v => /en-GB|en-SG|en-AU/.test(v.lang)) || s.getVoices().find(v => /^en/.test(v.lang));
+    if(v) u.voice = v; u.rate = .9; s.speak(u);
+  }catch(e){}
+}
+const hush = () => { try{ speechSynthesis.cancel(); }catch(e){} };
+
+/* ---------- local storage of sessions (this laptop only) ---------- */
+const DB = (() => {
+  let p;
+  const open = () => p ||= new Promise((res, rej) => {
+    const r = indexedDB.open("oreo-coach", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("sessions", {keyPath:"id"});
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("sessions", mode); const st = t.objectStore("sessions"); const out = fn(st); t.oncomplete = () => res(out?.result); t.onerror = () => rej(t.error); }); };
+  return { all: () => tx("readonly", s => s.getAll()), put: v => tx("readwrite", s => s.put(v)), del: id => tx("readwrite", s => s.delete(id)) };
+})();
+
+/* ---------- tabs ---------- */
+function showTab(which){
+  const prac = which === "practise";
+  $("#tab-practise").setAttribute("aria-selected", prac);
+  $("#tab-history").setAttribute("aria-selected", !prac);
+  P.hidden = !prac; H.hidden = prac;
+  if(!prac) renderHistory();
+}
+$("#tab-practise").onclick = () => showTab("practise");
+$("#tab-history").onclick = () => showTab("history");
+
+/* ---------- passcode gate ---------- */
+function renderGate(msg){
+  $("#tabs").hidden = true;
+  P.innerHTML = `
+  <section class="panel gate">
+    <h2>Enter the family passcode</h2>
+    <p class="muted small" style="margin:0">This keeps the Gemini key safe. You only need to enter it once on this laptop.</p>
+    ${msg ? `<div class="err">${esc(msg)}</div>` : ""}
+    <input type="password" id="pc" autocomplete="current-password" aria-label="Passcode">
+    <button class="btn big" id="go">Continue</button>
+  </section>`;
+  const go = () => { const v = $("#pc").value.trim(); if(!v) return; setPass(v); $("#tabs").hidden = false; renderUpload(); };
+  $("#go").onclick = go; $("#pc").onkeydown = e => { if(e.key === "Enter") go(); };
+  $("#pc").focus();
+}
+
+/* ---------- step 1: upload ---------- */
+function renderUpload(msg){
+  hush();
+  S = {step:"upload", file:null, sheet:null, pass:S.pass};
+  P.innerHTML = `
+  <section class="panel">
+    <div><p class="eyebrow">New practice</p><h2>Upload the picture and the question sheet</h2></div>
+    ${msg ? errBox(typeof msg === "string" ? {message:msg} : msg) : ""}
+    <div class="drops">
+      <label class="drop" id="d1"><input type="file" id="f1" accept="image/*">
+        <strong id="l1">1. The picture</strong><span class="muted small">The poster or photo your child talks about</span></label>
+      <label class="drop" id="d2"><input type="file" id="f2" accept="image/*">
+        <strong id="l2">2. The question sheet (optional)</strong><span class="muted small">Kept hidden from your child. A sideways photo is fine.</span></label>
+    </div>
+    <div class="row"><button class="btn big" id="start" disabled>Start practice</button></div>
+    <ol class="steps">
+      <li><b>1</b><span>Look at the picture for 1 minute.</span></li>
+      <li><b>2</b><span>The examiner asks 3 questions out loud.</span></li>
+      <li><b>3</b><span>Tap the microphone and answer by talking.</span></li>
+      <li><b>4</b><span>At the end, get an OREO check and a better answer for each question.</span></li>
+    </ol>
+    <div class="hint"><span><strong>The best answer is OREO, in 4 to 6 short sentences:</strong> <b>O</b>pinion, <b>R</b>eason, <b>E</b>xample from your life, <b>O</b>pinion again.</span></div>
+  </section>`;
+  const pick = (inp, key, label, zone) => {
+    const set = f => {
+      if(!f || !/^image\//.test(f.type)) return;
+      S[key] = f;
+      $(label).innerHTML = `<img src="${URL.createObjectURL(f)}" alt=""><br>${key === "file" ? "Picture added" : "Question sheet added"}`;
+      $("#start").disabled = !S.file;
+    };
+    $(inp).onchange = () => set($(inp).files[0]);
+    const z = $(zone);
+    z.ondragover = e => { e.preventDefault(); z.classList.add("over"); };
+    z.ondragleave = () => z.classList.remove("over");
+    z.ondrop = e => { e.preventDefault(); z.classList.remove("over"); set(e.dataTransfer.files[0]); };
+  };
+  pick("#f1", "file", "#l1", "#d1");
+  pick("#f2", "sheet", "#l2", "#d2");
+  $("#start").onclick = start;
+}
+
+async function start(){
+  $("#start").disabled = true;
+  S = {...S, step:"look", url: URL.createObjectURL(S.file), items: [], q: 0};
+  S.thumb = await thumbOf(S.file);
+  S.qPromise = genQuestions(S.file, S.sheet); S.qPromise.catch(() => {});
+  renderLook();
+}
+
+/* ---------- step 2: look timer ---------- */
+function renderLook(){
+  let left = 60, done = false;
+  P.innerHTML = `
+  <section class="panel">
+    <div><p class="eyebrow">Get ready</p><h2>Look carefully. What is happening? How do the people feel?</h2></div>
+    <img class="pic" src="${S.url}" alt="The practice picture">
+    <div class="row" style="justify-content:space-between">
+      <div class="timer">
+        <svg class="ring" viewBox="0 0 100 100" aria-label="Time left"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--sunk)" stroke-width="9"/><circle id="arc" cx="50" cy="50" r="42" fill="none" stroke="var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="0" transform="rotate(-90 50 50)"/><text id="sec" x="50" y="59" text-anchor="middle">60</text></svg>
+        <span class="muted small">Think of one thing you like or don't like in the picture, and a time something like this happened to you.</span>
+      </div>
+      <button class="btn" id="ready">I'm ready</button>
+    </div>
+  </section>`;
+  const t = setInterval(() => {
+    left--; if($("#sec")) $("#sec").textContent = left;
+    $("#arc")?.setAttribute("stroke-dashoffset", 263.9 * (60 - left) / 60);
+    if(left <= 0) go();
+  }, 1000);
+  function go(){ if(done) return; done = true; clearInterval(t); beginQuestions(); }
+  $("#ready").onclick = go;
+}
+
+/* ---------- Gemini prompts ---------- */
+async function genQuestions(file, sheet){
+  const pic = await prepImage(file);
+  const parts = [];
+  if(sheet){
+    const sh = await prepImage(sheet, 2000, .9);
+    parts.push({text:`You are helping a parent run a Singapore Primary 3 English oral practice (stimulus-based conversation).
+Image 1 is the stimulus picture. Image 2 is a photo of the exam prompts sheet; it may be rotated sideways or upside down, so read it in whichever orientation makes the text readable.
+Reply with only JSON:
+{"scene": "2-3 plain sentences describing image 1, including any words printed on it (title, date, time, venue)",
+ "questions": [{"main": "question (a) copied word for word", "follow": "the bullet line printed under (a), word for word, or empty string"}, ... for (b) and (c)]}
+Copy the sheet's Stimulus-Based Conversation questions exactly. Ignore handwriting, page headers and the "Reading Aloud" section.`});
+    parts.push({inlineData:{mimeType:"image/jpeg", data: await toB64(pic)}});
+    parts.push({inlineData:{mimeType:"image/jpeg", data: await toB64(sh)}});
+  }else{
+    parts.push({text:`You are a warm Singapore primary school English oral examiner talking to a Primary 3 pupil (about 9) about the attached picture.
+Reply with only JSON: {"scene": "2-3 plain sentences describing the picture", "questions": [{"main": "q1", "follow": ""}, {"main": "q2", "follow": ""}, {"main": "q3", "follow": ""}]}
+Each question: simple words, under 20 words, invites an opinion the child can support with a reason and a personal example. Q1 about the picture, Q2 links its theme to the child's life, Q3 a simple wider opinion.`});
+    parts.push({inlineData:{mimeType:"image/jpeg", data: await toB64(pic)}});
+  }
+  return gemini(parts);
+}
+
+async function evalAnswer(item){
+  return gemini([
+    {text:`You are a warm Singapore primary school English oral examiner coaching a Primary 3 pupil (about 9 years old).
+The picture shows: ${S.scene}
+The question was: "${item.q}" (if it has two parts, a good answer covers both)
+The attached audio is the child's spoken answer.
+
+The target is an OREO answer of 4 to 6 short sentences:
+- opinion: a clear view at the start
+- reason: why ("because ...")
+- example: a specific example, ideally from the child's own life
+- closing: the opinion stated again at the end
+
+Reply with only JSON:
+{"transcript": "exactly what the child said, cleaned only of long silences",
+ "opinion": true/false, "reason": true/false, "example": true/false, "closing": true/false,
+ "sentences": integer number of sentences spoken,
+ "delivery": "one sentence, speaking to the child, about how they spoke: clarity, pace, volume, pauses or confidence",
+ "praise": "one specific sentence about what the child did well, simple words, speaking to the child",
+ "tip": "one short sentence, speaking to the child, aimed at the most important missing OREO part; if all four are present, aimed at richer words or more detail",
+ "model": ["4 to 6 short sentences in strict OREO order, first person, Primary 3 vocabulary with 1-2 slightly richer words, reusing the child's own ideas and example where possible"],
+ "fixes": [up to 2 {"said": "...", "better": "..."} for real grammar or word-choice mistakes; [] if none]}
+If the audio is silent or unclear, say so in "transcript" and give a helpful tip.`},
+    {inlineData:{mimeType:"audio/wav", data: await toB64(item.audio)}}
+  ]);
+}
+
+function genSummary(items){
+  const lines = items.map((it, i) => `Q${i+1}: ${it.q}\nAnswer: ${it.r.transcript}\nOREO: opinion ${it.r.opinion}, reason ${it.r.reason}, example ${it.r.example}, closing ${it.r.closing}; ${it.r.sentences} sentences; delivery: ${it.r.delivery}`).join("\n\n");
+  return gemini([{text:`You are an experienced Singapore primary school English teacher writing to a parent after their Primary 3 child's oral practice (stimulus-based conversation). Target structure: OREO (Opinion, Reason, Example, Opinion again) in 4-6 short sentences.
+
+${lines}
+
+Reply with only JSON: {"summary": "3-4 plain sentences covering ideas and detail, sentence structure, vocabulary, and how the child spoke (fluency, confidence). Honest and specific; quote a short phrase where useful.", "next": ["1 or 2 concrete things to practise next"]}`}]);
+}
+
+/* ---------- step 3: questions ---------- */
+const qText = q => q.main + (q.follow ? " " + q.follow : "");
+
+async function beginQuestions(){
+  S.step = "ask";
+  P.innerHTML = `<section class="panel"><div class="status"><span class="dots"><i></i><i></i><i></i></span> The examiner is reading the picture${S.sheet ? " and question sheet" : ""}…</div></section>`;
+  try{
+    const r = await S.qPromise;
+    const qs = (Array.isArray(r?.questions) ? r.questions : []).map(q => typeof q === "string" ? {main:q, follow:""} : {main:String(q?.main || ""), follow:String(q?.follow || "")}).filter(q => q.main);
+    if(!qs.length) throw {code:"no_questions", message:"No questions could be found on the sheet. Try a clearer photo."};
+    S.scene = String(r.scene || ""); S.questions = qs.slice(0, NQ);
+    renderAsk();
+  }catch(e){
+    if(e?.code === "wrong_passcode") return renderGate("The passcode was wrong. Please enter it again.");
+    P.innerHTML = `<section class="panel">${errBox(e)}<div class="row"><button class="btn" id="retry">Try again</button><button class="btn ghost" id="new">Start over</button></div></section>`;
+    $("#retry").onclick = () => { S.qPromise = genQuestions(S.file, S.sheet); S.qPromise.catch(() => {}); beginQuestions(); };
+    $("#new").onclick = () => renderUpload();
+  }
+}
+
+function progress(){
+  return `<div class="qcount" aria-label="Question ${S.q+1} of ${S.questions.length}">${S.questions.map((_, i) => `<span class="${i <= S.q ? "on" : ""}"></span>`).join("")}</div>`;
+}
+const MIC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`;
+const STOP = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>`;
+
+function renderAsk(){
+  const q = S.questions[S.q], last = S.q === S.questions.length - 1;
+  P.innerHTML = `
+  <section class="stage">
+    <div class="panel"><img class="pic" src="${S.url}" alt="The practice picture"></div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><p class="eyebrow">Question ${S.q+1} of ${S.questions.length}</p>${progress()}</div>
+      <div class="bubble">${esc(q.main)}${q.follow ? `<div style="font-size:1rem;margin-top:8px;opacity:.85">${esc(q.follow)}</div>` : ""}</div>
+      <div class="row"><button class="btn ghost" id="hear">Hear the question again</button></div>
+      <div class="rec">
+        <button class="mic" id="mic" aria-label="Start recording">${MIC}</button>
+        <span class="clock" id="clock">Tap to talk</span>
+        <div class="caption" id="cap" data-empty="Your words will appear here as you talk."></div>
+        <div id="play"></div>
+      </div>
+      <div class="row"><button class="btn big" id="send" disabled>${last ? "Send and finish" : "Send answer"}</button><button class="btn ghost" id="redo" hidden>Record again</button></div>
+      <div id="msg"></div>
+    </div>
+  </section>`;
+  speak(qText(q));
+  $("#hear").onclick = () => speak(qText(q));
+  setupRecorder();
+}
+
+function setupRecorder(){
+  let rec = null, chunks = [], t0 = 0, tick = null, sr = null, finalText = "", stream = null;
+  const mic = $("#mic"), clock = $("#clock"), cap = $("#cap");
+  const startCaption = () => {
+    const R = window.SpeechRecognition || window.webkitSpeechRecognition; if(!R) return;
+    try{
+      sr = new R(); sr.lang = "en-SG"; sr.continuous = true; sr.interimResults = true;
+      sr.onresult = e => { let interim = ""; for(let i = e.resultIndex; i < e.results.length; i++){ const t = e.results[i][0].transcript; if(e.results[i].isFinal) finalText += t + " "; else interim += t; } cap.textContent = finalText + interim; };
+      sr.onerror = () => {}; sr.start();
+    }catch(e){ sr = null; }
+  };
+  mic.onclick = async () => {
+    if(rec && rec.state === "recording"){ rec.stop(); return; }
+    hush(); $("#msg").innerHTML = "";
+    try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e){ $("#msg").innerHTML = errBox({code:"mic_blocked", message:"The microphone is blocked. Click the lock icon next to the web address, allow Microphone, then try again."}); return; }
+    chunks = []; finalText = ""; cap.textContent = ""; $("#play").innerHTML = ""; $("#send").disabled = true; $("#redo").hidden = true;
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => {
+      clearInterval(tick); stream.getTracks().forEach(t => t.stop()); try{ sr?.stop(); }catch(e){}
+      mic.classList.remove("on"); mic.innerHTML = MIC; mic.setAttribute("aria-label", "Start recording");
+      clock.textContent = "Converting…";
+      try{
+        S.curAudio = await toWav(new Blob(chunks, {type: rec.mimeType}));
+        S.curCaption = cap.textContent.trim();
+        $("#play").innerHTML = `<audio controls src="${URL.createObjectURL(S.curAudio)}"></audio>`;
+        clock.textContent = "Listen back, then send";
+        $("#send").disabled = false; $("#redo").hidden = false; mic.hidden = true;
+      }catch(e){ clock.textContent = "Tap to talk"; $("#msg").innerHTML = errBox({code:"audio_error", message:"The recording could not be read. Please record again."}); }
+    };
+    rec.start(); startCaption(); t0 = Date.now();
+    mic.classList.add("on"); mic.innerHTML = STOP; mic.setAttribute("aria-label", "Stop recording");
+    tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); clock.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")} · tap to stop`; if(s >= 120) rec.stop(); }, 250);
+    clock.textContent = "0:00 · tap to stop";
+  };
+  $("#redo").onclick = () => { S.curAudio = null; $("#play").innerHTML = ""; cap.textContent = ""; $("#send").disabled = true; $("#redo").hidden = true; mic.hidden = false; clock.textContent = "Tap to talk"; };
+  $("#send").onclick = submit;
+}
+
+function checkItem(item){
+  item.err = null;
+  item.p = evalAnswer(item).then(r => { item.r = normal(r); }, e => { item.err = e; });
+  return item.p;
+}
+function submit(){
+  if(!S.curAudio) return;
+  hush();
+  const item = {q: qText(S.questions[S.q]), audio: S.curAudio, caption: S.curCaption || "", r: null};
+  S.curAudio = null; S.items.push(item);
+  checkItem(item);
+  if(S.q < S.questions.length - 1){ S.q++; renderAsk(); } else finish();
+}
+
+function normal(r){
+  return {
+    transcript: String(r.transcript || ""), delivery: String(r.delivery || ""),
+    opinion: !!r.opinion, reason: !!r.reason, example: !!r.example, closing: !!r.closing,
+    sentences: Math.max(0, parseInt(r.sentences) || 0),
+    praise: String(r.praise || ""), tip: String(r.tip || ""),
+    model: (Array.isArray(r.model) ? r.model : String(r.model || "").split(/(?<=[.!?])\s+/)).map(String).filter(Boolean).slice(0, 6),
+    fixes: Array.isArray(r.fixes) ? r.fixes.slice(0, 2).map(f => ({said:String(f?.said||""), better:String(f?.better||"")})).filter(f => f.said && f.better) : []
+  };
+}
+
+/* ---------- feedback pieces ---------- */
+function oreoRow(r){
+  const parts = [["O","Opinion",r.opinion],["R","Reason",r.reason],["E","Example",r.example],["O","Opinion again",r.closing]];
+  return `<div class="oreo">${parts.map(([l, n, ok]) => `<div class="layer ${ok ? "yes" : "no"}"><span class="l">${l}</span><span>${n}</span><span>${ok ? "Yes" : "Missing"}</span></div>`).join("")}</div>`;
+}
+function lengthMeter(n){
+  const pct = Math.min(n, 8) / 8 * 100, verdict = n < 4 ? "a bit short" : n > 6 ? "a bit long" : "just right";
+  return `<div class="meter"><span>Sentences: <strong>${n}</strong></span><div class="bar" aria-hidden="true"><div class="band"></div><div class="fill" style="width:${pct}%"></div></div><span class="muted small">target 4–6 · ${verdict}</span></div>`;
+}
+function feedbackHTML(it, i){
+  const r = it.r;
+  return `
+  <article class="panel">
+    <p class="eyebrow">Question ${i+1}</p>
+    <h3 style="font-size:1.2rem">${esc(it.q)}</h3>
+    ${it.audio ? `<audio controls src="${URL.createObjectURL(it.audio)}"></audio>` : ""}
+    <p class="muted" style="margin:0"><span class="eyebrow">You said</span><br>${esc(r.transcript)}</p>
+    ${oreoRow(r)}
+    ${lengthMeter(r.sentences)}
+    <div class="fb">
+      <div class="card"><h3>Well done</h3><p style="margin:4px 0 0">${esc(r.praise)}</p></div>
+      ${r.delivery ? `<div class="card"><h3>How you spoke</h3><p style="margin:4px 0 0">${esc(r.delivery)}</p></div>` : ""}
+      <div class="card"><h3>Try this next time</h3><p style="margin:4px 0 0">${esc(r.tip)}</p></div>
+      ${r.fixes?.length ? `<div class="card"><h3>Small fixes</h3>${r.fixes.map(f => `<p class="fix" style="margin:4px 0 0"><s>${esc(f.said)}</s> → <ins>${esc(f.better)}</ins></p>`).join("")}</div>` : ""}
+    </div>
+    <div class="model">
+      <div class="row" style="justify-content:space-between"><h3>Say it better</h3><button class="btn ghost" data-speak="${i}">Listen</button></div>
+      <ol>${(r.model || []).map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+    </div>
+  </article>`;
+}
+const wireSpeak = (root, items) => root.querySelectorAll("[data-speak]").forEach(b => b.onclick = () => speak((items[+b.dataset.speak].r.model || []).join(" ")));
+
+function statsOf(items){
+  const n = items.length || 1, c = k => items.filter(i => i.r[k]).length;
+  return {n: items.length, opinion: c("opinion"), reason: c("reason"), example: c("example"), closing: c("closing"),
+    full: items.filter(i => i.r.opinion && i.r.reason && i.r.example && i.r.closing).length,
+    avgSentences: Math.round(items.reduce((a, i) => a + i.r.sentences, 0) / n * 10) / 10};
+}
+function weakest(st){
+  const parts = [["example","Example"],["reason","Reason"],["opinion","Opinion"],["closing","Opinion again"]];
+  return parts.reduce((w, p) => st[p[0]] < st[w[0]] ? p : w)[1];
+}
+function summaryHTML(d){
+  const st = d.stats;
+  return `
+    <div class="stats">
+      <div class="stat"><div class="n">${st.full}/${st.n}</div><div class="small muted">full OREO answers</div></div>
+      <div class="stat"><div class="n">${st.avgSentences}</div><div class="small muted">sentences per answer (target 4–6)</div></div>
+      <div class="stat"><div class="n">${st.example}/${st.n}</div><div class="small muted">answers with an example</div></div>
+      <div class="stat"><div class="n">${esc(weakest(st))}</div><div class="small muted">part to practise most</div></div>
+    </div>
+    ${d.summary ? `<div><h3>For parents</h3><p style="margin:6px 0 0;max-width:65ch">${esc(d.summary)}</p></div>` : ""}
+    ${d.next?.length ? `<div><h3>Practise next</h3><ul style="margin:6px 0 0;padding-left:1.2em">${d.next.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}`;
+}
+
+/* ---------- step 4: results + save ---------- */
+async function finish(){
+  S.step = "results";
+  const show = () => {
+    const done = S.items.filter(i => i.r || i.err).length;
+    if(S.step !== "results") return;
+    P.innerHTML = `<section class="panel"><div><p class="eyebrow">All done</p><h2>Well done for finishing! The examiner is listening to your answers.</h2></div>
+      <div class="status"><span class="dots"><i></i><i></i><i></i></span> Checked ${done} of ${S.items.length}…</div></section>`;
+  };
+  show();
+  S.items.forEach(i => i.p.then(show));
+  await Promise.all(S.items.map(i => i.p));
+  const failed = S.items.filter(i => !i.r);
+  if(failed.length){
+    if(failed[0].err?.code === "wrong_passcode") return renderGate("The passcode was wrong. Please enter it again.");
+    P.innerHTML = `<section class="panel">${errBox(failed[0].err)}
+      <p style="margin:0">${failed.length} answer${failed.length > 1 ? "s" : ""} could not be checked.</p>
+      <div class="row"><button class="btn" id="recheck">Check again</button>${failed.length < S.items.length ? `<button class="btn ghost" id="skip">Show the others</button>` : ""}</div></section>`;
+    $("#recheck").onclick = () => { failed.forEach(checkItem); finish(); };
+    $("#skip") && ($("#skip").onclick = () => wrapUp(S.items.filter(i => i.r)));
+    return;
+  }
+  wrapUp(S.items);
+}
+
+async function wrapUp(items){
+  S.step = "summary";
+  P.innerHTML = `<section class="panel"><div class="status"><span class="dots"><i></i><i></i><i></i></span> Writing the parent summary…</div></section>`;
+  let sum = {summary:"", next:[]};
+  try{ const r = await genSummary(items); sum = {summary:String(r.summary || ""), next:(r.next || []).map(String).slice(0, 2)}; }catch(e){}
+  const doc = {id: String(Date.now()), createdAt: new Date().toISOString(), thumb: S.thumb || "", scene: S.scene,
+    items: items.map(i => ({q: i.q, audio: i.audio, r: i.r})), stats: statsOf(items), summary: sum.summary, next: sum.next};
+  let saved = "Saved to Past sessions on this laptop.";
+  try{ await DB.put(doc); }catch(e){ saved = "This session could not be saved on this laptop."; }
+  renderSummary(doc, saved);
+}
+
+function renderSummary(d, saved){
+  P.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <section class="panel">
+      <div><p class="eyebrow">Session complete</p><h2>Great effort! Here is how it went.</h2></div>
+      ${summaryHTML(d)}
+      <p class="small muted">${esc(saved)}</p>
+    </section>
+    ${d.items.map(feedbackHTML).join("")}
+    <div class="row"><button class="btn big" id="again">Practise with a new picture</button><button class="btn ghost" id="past">Past sessions</button></div>
+  </div>`;
+  wireSpeak(P, d.items);
+  $("#again").onclick = () => renderUpload();
+  $("#past").onclick = () => showTab("history");
+}
+
+/* ---------- history ---------- */
+let sessions = [];
+function trendSVG(list){
+  const pts = list.slice().reverse().slice(-12);
+  if(pts.length < 2) return "";
+  const W = 560, Hh = 150, l = 34, r = 12, t = 14, b = 26, iw = W - l - r, ih = Hh - t - b;
+  const x = i => l + i * iw / (pts.length - 1), y = v => t + ih - Math.min(v, 8) / 8 * ih;
+  const line = pts.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(s.stats.avgSentences).toFixed(1)}`).join("");
+  const bars = pts.map((s, i) => { const h = s.stats.n ? s.stats.full / s.stats.n * ih : 0; return `<rect x="${(x(i)-7).toFixed(1)}" y="${(t+ih-h).toFixed(1)}" width="14" height="${h.toFixed(1)}" rx="3" fill="var(--hl)"/>`; }).join("");
+  const grid = [0,2,4,6,8].map(v => `<line x1="${l}" x2="${W-r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${l-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`).join("");
+  const band = `<rect x="${l}" y="${y(6)}" width="${iw}" height="${y(4)-y(6)}" fill="var(--good-bg)"/>`;
+  const labels = pts.map((s, i) => `<text x="${x(i)}" y="${Hh-8}" text-anchor="middle">${new Date(s.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short"})}</text>`).join("");
+  const dots = pts.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.stats.avgSentences)}" r="${i === pts.length-1 ? 5 : 3.5}" fill="var(--accent)"/>`).join("");
+  return `<div style="overflow-x:auto"><svg class="trend" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Progress over recent sessions">${band}${grid}${bars}<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>${dots}${labels}</svg></div>
+  <div class="row small muted"><span>● Sentences per answer</span><span style="color:var(--ink)"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--hl)"></span> Share of full OREO answers</span><span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--good-bg)"></span> 4–6 sentence target</span></div>`;
+}
+
+async function renderHistory(){
+  try{ sessions = (await DB.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }catch(e){ sessions = []; }
+  if(!sessions.length){
+    H.innerHTML = `<section class="panel"><h2>Past sessions</h2><p class="muted">No sessions yet. Finished practices are saved here on this laptop, with the recordings, the OREO check and the parent summary.</p><div class="row"><button class="btn" id="go">Start a practice</button></div></section>`;
+    $("#go").onclick = () => showTab("practise"); return;
+  }
+  H.innerHTML = `
+  <section class="panel"><div><p class="eyebrow">${sessions.length} session${sessions.length > 1 ? "s" : ""}</p><h2>Progress</h2></div>
+    ${trendSVG(sessions) || `<p class="muted small">The progress chart appears after two sessions.</p>`}</section>
+  <section class="hist" style="margin-top:16px">${sessions.map(s => { const st = s.stats;
+    return `<article class="hrow">
+      ${s.thumb ? `<img src="${esc(s.thumb)}" alt="">` : `<div style="width:88px;height:66px;border-radius:8px;background:var(--sunk)"></div>`}
+      <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+        <strong>${new Date(s.createdAt).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</strong>
+        <div class="mini"><span>Full OREO ${st.full}/${st.n}</span><span>${st.avgSentences} sentences avg</span>${["opinion","reason","example","closing"].map((k, i) => `<span class="${st[k] < st.n ? "w" : ""}">${["Opinion","Reason","Example","Opinion again"][i]} ${st[k]}/${st.n}</span>`).join("")}</div>
+      </div>
+      <div class="act row"><button class="btn ghost" data-open="${esc(s.id)}">Open</button></div>
+    </article>`; }).join("")}</section>`;
+  H.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openSession(b.dataset.open));
+}
+
+function openSession(id){
+  const s = sessions.find(x => x.id === id); if(!s) return;
+  let confirmDel = false;
+  H.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <section class="panel">
+      <div class="row" style="justify-content:space-between"><button class="btn ghost" id="back">Back</button><span class="muted small">${new Date(s.createdAt).toLocaleString()}</span></div>
+      ${s.thumb ? `<img src="${esc(s.thumb)}" alt="The practice picture" style="max-width:240px;border-radius:12px">` : ""}
+      ${summaryHTML(s)}
+    </section>
+    ${s.items.map(feedbackHTML).join("")}
+    <div class="row"><button class="btn ghost" id="del">Delete this session</button></div>
+  </div>`;
+  wireSpeak(H, s.items);
+  $("#back").onclick = renderHistory;
+  $("#del").onclick = async () => {
+    if(!confirmDel){ confirmDel = true; $("#del").textContent = "Tap again to delete"; return; }
+    await DB.del(id).catch(() => {}); renderHistory();
+  };
+}
+
+/* ---------- boot ---------- */
+if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
+  P.innerHTML = `<section class="panel"><div class="err">This browser cannot record audio. Please open this page in Google Chrome.</div></section>`;
+}else if(!getPass()) renderGate();
+else renderUpload();
+</script>
+
+</body>
+</html>
