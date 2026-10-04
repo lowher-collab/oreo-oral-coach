@@ -45,6 +45,7 @@ h3{font-family:var(--display);font-weight:700;font-size:1.1rem;margin:0}
 .eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
 button{font-family:var(--body)}
 .btn{border:0;border-radius:12px;padding:12px 20px;font-weight:600;font-size:1rem;cursor:pointer;background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;gap:8px}
+a.btn{text-decoration:none}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
 .btn.big{font-size:1.15rem;padding:14px 26px;border-radius:14px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -154,10 +155,22 @@ let S = {};
 const getPass = () => { try{ return localStorage.getItem("oreo-pass") || ""; }catch(e){ return S.pass || ""; } };
 const setPass = v => { S.pass = v; try{ v ? localStorage.setItem("oreo-pass", v) : localStorage.removeItem("oreo-pass"); }catch(e){} };
 
-async function gemini(parts){
-  const r = await fetch("/api/gemini", {method:"POST", headers:{"Content-Type":"application/json","x-passcode":getPass() || S.pass || ""}, body: JSON.stringify({parts})});
+const FEEDBACK_FORM = "https://form.jotform.com/262758287280064";
+const DAILY_LIMIT = 3;
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+const today = () => new Date().toLocaleDateString("en-CA");
+const usedToday = () => { try{ const u = JSON.parse(store.get("oreo-usage") || "{}"); return u.day === today() ? u.n : 0; }catch(e){ return 0; } };
+const countSession = () => store.set("oreo-usage", JSON.stringify({day: today(), n: usedToday() + 1}));
+const familyId = () => store.get("oreo-family") || S.family || "";
+
+async function gemini(parts, kind = "other"){
+  const r = await fetch("/api/gemini", {method:"POST", headers:{"Content-Type":"application/json","x-passcode":getPass() || S.pass || "","x-call-kind":kind}, body: JSON.stringify({parts})});
   const d = await r.json().catch(() => ({}));
-  if(r.status === 401){ setPass(""); throw {code:"wrong_passcode", message:"Wrong passcode."}; }
+  if(r.status === 401){ setPass(""); throw {code:"wrong_passcode", message:"Wrong family code."}; }
   if(!r.ok) throw {code: d.error || "server_error", message: d.message || "The examiner could not answer."};
   return parseJSON(d.text);
 }
@@ -168,9 +181,11 @@ function parseJSON(t){
   throw {code:"bad_answer", message:"The examiner's reply could not be read."};
 }
 function errMsg(e){
-  if(e?.code === "wrong_passcode") return "The passcode was wrong. Reload the page and enter it again.";
+  if(e?.code === "wrong_passcode") return "The family code was not accepted. Reload the page and enter it again.";
+  if(e?.code === "daily_limit") return "Today's practice limit has been reached. Please try again tomorrow.";
+  if(e?.code === "audio_too_long") return "The recording is too long. Please keep each answer under 90 seconds.";
   if(e?.code === "missing_key") return "The Gemini key is not set up yet in Vercel (GEMINI_API_KEY).";
-  if(e?.code === "missing_passcode") return "The family passcode is not set up yet in Vercel (APP_PASSCODE).";
+  if(e?.code === "missing_passcode") return "Family codes are not set up yet in Vercel (APP_CODES).";
   if(e?.code === "gemini_error") return "Gemini refused the request: " + (e.message || "");
   return e?.message || "Something went wrong. Please try again.";
 }
@@ -288,20 +303,52 @@ function showTab(which){
 $("#tab-practise").onclick = () => showTab("practise");
 $("#tab-history").onclick = () => showTab("history");
 
-/* ---------- passcode gate ---------- */
+/* ---------- family code gate + consent ---------- */
 function renderGate(msg){
   $("#tabs").hidden = true;
   P.innerHTML = `
   <section class="panel gate">
-    <h2>Enter the family passcode</h2>
-    <p class="muted small" style="margin:0">This keeps the Gemini key safe. You only need to enter it once on this laptop.</p>
+    <h2>Enter your family code</h2>
+    <p class="muted small" style="margin:0">Each pilot family has its own code. You only need to enter it once on this laptop.</p>
     ${msg ? `<div class="err">${esc(msg)}</div>` : ""}
-    <input type="password" id="pc" autocomplete="current-password" aria-label="Passcode">
+    <input type="password" id="pc" autocomplete="current-password" aria-label="Family code">
     <button class="btn big" id="go">Continue</button>
   </section>`;
-  const go = () => { const v = $("#pc").value.trim(); if(!v) return; setPass(v); $("#tabs").hidden = false; renderUpload(); };
+  const go = async () => {
+    const v = $("#pc").value.trim(); if(!v) return;
+    $("#go").disabled = true; $("#go").textContent = "Checking…";
+    try{
+      const r = await fetch("/api/gemini", {method:"POST", headers:{"Content-Type":"application/json","x-passcode":v}, body: JSON.stringify({action:"whoami"})});
+      const d = await r.json().catch(() => ({}));
+      if(r.status === 401) return renderGate("That code was not recognised. Please check it and try again.");
+      if(!r.ok) return renderGate(errMsg({code: d.error, message: d.message}));
+      setPass(v); S.family = d.family; store.set("oreo-family", d.family);
+      $("#tabs").hidden = false;
+      store.get("oreo-consent") ? renderUpload() : renderConsent();
+    }catch(e){ renderGate("Could not reach the server. Check your internet connection and try again."); }
+  };
   $("#go").onclick = go; $("#pc").onkeydown = e => { if(e.key === "Enter") go(); };
   $("#pc").focus();
+}
+
+function renderConsent(){
+  $("#tabs").hidden = true;
+  P.innerHTML = `
+  <section class="panel" style="max-width:640px;margin:0 auto">
+    <p class="eyebrow">Before you start · 使用前请阅读</p>
+    <h2>About this pilot</h2>
+    <ul style="margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px">
+      <li>This is a free pilot of a practice tool for Primary 3 English oral (stimulus-based conversation). Scores are estimates, not official marks.<br><span class="muted small">这是 P3 英文口试练习工具的免费内测，分数仅为估计，并非官方评分。</span></li>
+      <li>A parent should set up and supervise each practice.<br><span class="muted small">请由家长操作并陪同孩子练习。</span></li>
+      <li>The pictures you upload and your child's recorded answers are sent to Google Gemini to generate questions and feedback. Please do not upload photos showing your child's face or name.<br><span class="muted small">上传的图片和孩子的录音会发送给 Google Gemini，用于出题和反馈。请勿上传带有孩子脸部或姓名的照片。</span></li>
+      <li>Practice records and recordings are saved only in this browser on this laptop. You can delete them at any time under Past sessions.<br><span class="muted small">练习记录和录音只保存在这台电脑的浏览器里，可随时在 Past sessions 中删除。</span></li>
+      <li>The organiser only sees your family code and how often the tool is used, not your answers or recordings. Feedback you choose to submit goes to a separate form.<br><span class="muted small">组织者只能看到家庭代号和使用次数，看不到答案或录音。您主动提交的反馈会进入单独的表单。</span></li>
+    </ul>
+    <label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" id="ok" style="width:20px;height:20px;margin-top:2px"><span>I am the parent or guardian and I agree. · 我是家长或监护人，同意以上内容。</span></label>
+    <div class="row"><button class="btn big" id="agree" disabled>Continue</button></div>
+  </section>`;
+  $("#ok").onchange = () => { $("#agree").disabled = !$("#ok").checked; };
+  $("#agree").onclick = () => { store.set("oreo-consent", new Date().toISOString()); $("#tabs").hidden = false; renderUpload(); };
 }
 
 /* ---------- step 1: upload ---------- */
@@ -312,13 +359,14 @@ function renderUpload(msg){
   <section class="panel">
     <div><p class="eyebrow">New practice</p><h2>Upload the picture and the question sheet</h2></div>
     ${msg ? errBox(typeof msg === "string" ? {message:msg} : msg) : ""}
+    ${usedToday() >= DAILY_LIMIT ? `<div class="err">You have finished today's ${DAILY_LIMIT} practices. Well done! Come back tomorrow. · 今天的 ${DAILY_LIMIT} 次练习已完成，明天再来吧。</div>` : ""}
     <div class="drops">
       <label class="drop" id="d1"><input type="file" id="f1" accept="image/*">
         <strong id="l1">1. The picture</strong><span class="muted small">The poster or photo your child talks about</span></label>
       <label class="drop" id="d2"><input type="file" id="f2" accept="image/*">
         <strong id="l2">2. The question sheet (optional)</strong><span class="muted small">Kept hidden from your child. A sideways photo is fine.</span></label>
     </div>
-    <div class="row"><button class="btn big" id="start" disabled>Start practice</button></div>
+    <div class="row"><button class="btn big" id="start" disabled>Start practice</button><span class="muted small">${Math.max(0, DAILY_LIMIT - usedToday())} of ${DAILY_LIMIT} practices left today</span></div>
     <ol class="steps">
       <li><b>1</b><span>Look at the picture for 1 minute.</span></li>
       <li><b>2</b><span>The examiner asks 3 questions out loud.</span></li>
@@ -332,7 +380,7 @@ function renderUpload(msg){
       if(!f || !/^image\//.test(f.type)) return;
       S[key] = f;
       $(label).innerHTML = `<img src="${URL.createObjectURL(f)}" alt=""><br>${key === "file" ? "Picture added" : "Question sheet added"}`;
-      $("#start").disabled = !S.file;
+      $("#start").disabled = !S.file || usedToday() >= DAILY_LIMIT;
     };
     $(inp).onchange = () => set($(inp).files[0]);
     const z = $(zone);
@@ -346,7 +394,9 @@ function renderUpload(msg){
 }
 
 async function start(){
+  if(usedToday() >= DAILY_LIMIT) return renderUpload();
   $("#start").disabled = true;
+  countSession();
   S = {...S, step:"look", url: URL.createObjectURL(S.file), items: [], q: 0};
   S.thumb = await thumbOf(S.file);
   S.qPromise = genQuestions(S.file, S.sheet); S.qPromise.catch(() => {});
@@ -397,7 +447,7 @@ Reply with only JSON: {"scene": "2-3 plain sentences describing the picture", "q
 Each question: simple words, under 20 words, invites an opinion the child can support with a reason and a personal example. Q1 about the picture, Q2 links its theme to the child's life, Q3 a simple wider opinion.`});
     parts.push({inlineData:{mimeType:"image/jpeg", data: await toB64(pic)}});
   }
-  return gemini(parts);
+  return gemini(parts, "questions");
 }
 
 async function evalAnswer(item){
@@ -435,7 +485,7 @@ Reply with only JSON:
  "fixes": [up to 2 {"said": "...", "better": "..."} for real grammar or word-choice mistakes; [] if none]}
 If the audio is silent or unclear, say so in "transcript", give 0 marks where nothing was said, and give a helpful next_step.`},
     {inlineData:{mimeType:"audio/wav", data: await toB64(item.audio)}}
-  ]);
+  ], "answer");
 }
 
 function genSummary(items){
@@ -444,7 +494,7 @@ function genSummary(items){
 
 ${lines}
 
-Reply with only JSON: {"summary": "3-4 plain sentences for the parent: what went well, the main weakness with evidence from the answers, and whether structure, language or fluency is holding the score back most. Honest and specific; quote a short phrase where useful.", "next": ["1 or 2 concrete practice activities for this week that target the main weakness"]}`}]);
+Reply with only JSON: {"summary": "3-4 plain sentences for the parent: what went well, the main weakness with evidence from the answers, and whether structure, language or fluency is holding the score back most. Honest and specific; quote a short phrase where useful.", "next": ["1 or 2 concrete practice activities for this week that target the main weakness"]}`}], "summary");
 }
 
 /* ---------- step 3: questions ---------- */
@@ -530,7 +580,7 @@ function setupRecorder(){
     };
     rec.start(); startCaption(); t0 = Date.now();
     mic.classList.add("on"); mic.innerHTML = STOP; mic.setAttribute("aria-label", "Stop recording");
-    tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); clock.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")} · tap to stop`; if(s >= 120) rec.stop(); }, 250);
+    tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); clock.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")} · tap to stop${s >= 75 ? " · " + (90 - s) + "s left" : ""}`; if(s >= 90) rec.stop(); }, 250);
     clock.textContent = "0:00 · tap to stop";
   };
   $("#redo").onclick = () => { S.curAudio = null; $("#play").innerHTML = ""; cap.textContent = ""; $("#send").disabled = true; $("#redo").hidden = true; mic.hidden = false; clock.textContent = "Tap to talk"; };
@@ -687,12 +737,22 @@ function renderSummary(d, saved){
       ${summaryHTML(d)}
       <p class="small muted">${esc(saved)}</p>
     </section>
+    <section class="panel" style="border-color:var(--accent)">
+      <div><p class="eyebrow">Pilot feedback · 内测反馈</p><h3>Help us improve: 4 quick questions, about 30 seconds</h3></div>
+      <p class="muted small" style="margin:0">Was the score fair? Was the advice useful? If your child has a school oral mark, you can add it too. 分数公平吗？建议有用吗？如有学校口试成绩，也可以一并填写。</p>
+      <div class="row"><a class="btn" href="${esc(feedbackLink(d))}" target="_blank" rel="noopener">Give feedback · 填写反馈</a></div>
+    </section>
     ${d.items.map(feedbackHTML).join("")}
     <div class="row"><button class="btn big" id="again">Practise with a new picture</button><button class="btn ghost" id="past">Past sessions</button></div>
   </div>`;
   wireSpeak(P, d.items);
   $("#again").onclick = () => renderUpload();
   $("#past").onclick = () => showTab("history");
+}
+
+function feedbackLink(d){
+  const q = new URLSearchParams({q2_textbox0: familyId() || "unknown", q3_textbox1: (d.createdAt || "").slice(0, 10), q4_textbox2: String(d.stats?.score ?? "")});
+  return FEEDBACK_FORM + "?" + q.toString();
 }
 
 /* ---------- history ---------- */
@@ -719,7 +779,7 @@ async function renderHistory(){
     $("#go").onclick = () => showTab("practise"); return;
   }
   H.innerHTML = `
-  <section class="panel"><div><p class="eyebrow">${sessions.length} session${sessions.length > 1 ? "s" : ""}</p><h2>Progress</h2></div>
+  <section class="panel"><div class="row" style="justify-content:space-between"><div><p class="eyebrow">${sessions.length} session${sessions.length > 1 ? "s" : ""}</p><h2>Progress</h2></div><button class="btn ghost" id="wipe">Delete all records on this laptop</button></div>
     ${trendSVG(sessions) || `<p class="muted small">The progress chart appears after two sessions.</p>`}</section>
   <section class="hist" style="margin-top:16px">${sessions.map(s => { const st = s.stats;
     return `<article class="hrow">
@@ -731,6 +791,12 @@ async function renderHistory(){
       <div class="act row"><button class="btn ghost" data-open="${esc(s.id)}">Open</button></div>
     </article>`; }).join("")}</section>`;
   H.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openSession(b.dataset.open));
+  let sure = false;
+  $("#wipe").onclick = async () => {
+    if(!sure){ sure = true; $("#wipe").textContent = "Tap again to delete everything"; return; }
+    for(const x of sessions) await DB.del(x.id).catch(() => {});
+    renderHistory();
+  };
 }
 
 function openSession(id){
@@ -744,7 +810,7 @@ function openSession(id){
       ${summaryHTML(s)}
     </section>
     ${s.items.map(feedbackHTML).join("")}
-    <div class="row"><button class="btn ghost" id="del">Delete this session</button></div>
+    <div class="row"><a class="btn ghost" href="${esc(feedbackLink(s))}" target="_blank" rel="noopener">Give feedback or add school mark</a><button class="btn ghost" id="del">Delete this session</button></div>
   </div>`;
   wireSpeak(H, s.items);
   $("#back").onclick = renderHistory;
@@ -757,7 +823,8 @@ function openSession(id){
 /* ---------- boot ---------- */
 if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
   P.innerHTML = `<section class="panel"><div class="err">This browser cannot record audio. Please open this page in Google Chrome.</div></section>`;
-}else if(!getPass()) renderGate();
+}else if(!getPass() || !store.get("oreo-family")) renderGate();
+else if(!store.get("oreo-consent")) renderConsent();
 else renderUpload();
 </script>
 
